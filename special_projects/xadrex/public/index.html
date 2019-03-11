@@ -1,0 +1,87 @@
+<html>
+	<title>XadreX Online</title>
+ 	<link rel="stylesheet" href="index.css">
+	
+	<body background="/images/bgImage.jpg">
+		<div class=main>		
+			<div class="title">XadreX Online</div>
+			<label class="label">Usuário</label>
+			<input type="text" id="nome" placeholder="Usuário..">
+
+			<label class="label">Senha</label>
+			<input type="password" id="password" name="lastname" placeholder="Senha..">
+			<input type="submit" id="conecta" value="ENTRAR">
+		</div>
+		
+	</body>
+
+ 	<script>
+  	
+		var vetor = [];
+		var servidorWebserver;
+		var websocket;
+		var botaoConecta = O('conecta');
+		var id = O('nome');
+		var meuID;
+		var password = O('password');
+
+		servidorWebserver = 'ws://' + window.location.hostname + ':8080';
+
+		function startConnection(dadosUsuario) {		
+			websocket = new WebSocket(servidorWebserver);
+			websocket.onopen = function(evt) {			
+				onOpen(evt, dadosUsuario)
+			}
+			websocket.onclose = function(evt) {	
+				onClose(evt)
+			}
+			websocket.onmessage = function(evt) {	
+				onMessage(evt)
+			}
+		}
+
+		function onOpen(env, dadosUsuario) {
+			let MSG = {
+				tipo: 'LOGIN',
+				valor: dadosUsuario
+			};
+			websocket.send(JSON.stringify(MSG))
+		}
+
+      	function onClose(evt) {
+         	localStorage.removeItem('LOGIN');
+			websocket.close();
+      	}
+
+      	function onMessage(evt) {
+          	var msg = evt.data
+          	msg = JSON.parse(msg);
+          	switch (msg.tipo) {
+              	case 'ERRO':
+                  	alert(msg.valor);
+					O('nome').value = '';
+					O('password').value = '';
+					websocket.close();
+                  	break;
+				case 'VALIDO':
+					window.location.replace("http://localhost:3000/main.html?"+msg.valor);
+					break;
+          	}
+			console.log("Recebeu mensagem", msg.tipo);
+      	}
+
+      	function O(msg) {
+          	return document.getElementById(msg);
+      	}
+
+
+      	// Associa eventos
+      	botaoConecta.addEventListener('click', function() {
+			let dadosUsuario = {nome:nome.value, password:password.value};
+          	startConnection(dadosUsuario);
+      	}, false);
+
+      	
+
+	</script>
+</html>

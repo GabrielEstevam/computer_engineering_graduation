@@ -1,0 +1,139 @@
+<html>
+	<title>XadreX Online</title>
+	<link rel="stylesheet" href="main.css">
+
+	<body background="/images/bgImage.jpg">
+		<div class="header" id="header">
+			<div class="label">XadreX Online</div>
+			<div class="sair" id="logout">Sair</div>
+		</div>
+		<div align="center" class="main">
+			<div class="title">Usuários Online</div>
+			<div class="uls">
+				<ul class="ul1" id="online-users"></ul>
+				<ul class="ul2" id="convidar-user" onclick="invite(event)"></ul>
+			</div>
+		</div>
+	</body>
+
+	<script>
+		var botaoSair = O('logout');
+		var servidorWebserver;
+		var websocket;
+
+		var onlineUser = O('online-users');
+		var convidarUser = O('convidar-user');
+
+		servidorWebserver = 'ws://' + window.location.hostname + ':8080';
+		verificaLogin();
+		//setTimeout(verificaLogin,1000)
+		function startConnection(token) {		
+			websocket = new WebSocket(servidorWebserver);
+			websocket.onopen = function(evt) {			
+				onOpen(evt, token);
+			}
+			websocket.onclose = function(evt) {
+				onClose(evt)
+			}
+			websocket.onmessage = function(evt) {	
+				onMessage(evt);
+			}
+		}
+	
+		function onOpen(env, token) {
+			let MSG = {tipo: 'VERIFICA', valor: token};
+			websocket.send(JSON.stringify(MSG));
+		}
+
+      	function onClose(evt) {			
+			websocket.close();
+      	}
+
+      	function onMessage(evt) {
+          	var msg = evt.data
+          	msg = JSON.parse(msg);
+          	switch (msg.tipo) {
+				case 'VALIDO':
+					console.log('valido');			
+					break
+				case 'INVALIDO':
+					websocket.close();
+					window.location.replace("http://localhost:3000");
+					break;
+				case 'ONLINE':
+					break;
+				case 'ADD-USER':
+					addUser(msg.valor);
+					break;
+				case 'REMOVE-USER':
+					removeUser(msg.valor);
+					break;
+				case 'CONVITE':
+					var rs = confirm(msg.valor + " convidou para jogar");
+					if (rs) {
+						var msgRetorno = {tipo: 'START-GAME', valor:msg.valor};
+						websocket.send(JSON.stringify(msgRetorno)); 
+					} else {
+						var msgRetorno = {tipo: 'CONVITE-NEGADO', valor:msg.valor};
+						websocket.send(JSON.stringify(msgRetorno));
+					}
+					break;
+				case 'CONVITE-NEGADO':
+					alert(msg.valor+ " recusou o convite");
+					break
+				case 'REDIRECIONA-GAME':
+					window.location.replace("http://localhost:3000/game.html?"+msg.valor);
+					break;
+				case 'ERRO':
+                  	alert(msg.valor);
+					websocket.close();
+                  	break;
+          	}
+          	console.log('Recebeu msg', msg.tipo);
+      	}
+
+      	function O(msg) {
+          	return document.getElementById(msg);
+      	}
+
+		botaoSair.addEventListener('click', function() {
+			var query = location.search.slice(1);
+			let MSG = {tipo: 'SAIR', valor: query};
+			websocket.send(JSON.stringify(MSG));
+			websocket.close();
+			window.location.replace("http://localhost:3000");
+		}, false);
+
+		function addUser(id) {
+			var li = document.createElement("li");
+			li.setAttribute('id',id);
+			li.appendChild(document.createTextNode(id));
+			onlineUser.appendChild(li);
+			var li = document.createElement("li");
+			li.setAttribute('id',id);
+			li.appendChild(document.createTextNode('convidar'));
+			convidarUser.appendChild(li);
+		}
+
+		function removeUser(id) {
+			onlineUser.removeChild(O(id));
+			convidarUser.removeChild(O(id));
+		}
+
+		function invite(event) {
+			var user = event.target.id;
+			let MSG = {tipo: 'CONVITE', valor:user};
+			websocket.send(JSON.stringify(MSG));
+		}
+
+		function verificaLogin() {
+			var query = location.search.slice(1);
+			if (query == undefined) {
+				window.location.replace("http://localhost:3000");
+			} else {
+				startConnection(query);
+			}
+		}
+
+	</script>
+</html>

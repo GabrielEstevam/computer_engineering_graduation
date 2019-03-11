@@ -1,0 +1,564 @@
+<html>
+	<title>XadreX Online</title>
+	<link rel="stylesheet" href="game.css">
+
+	<body background="/images/bgImage.jpg">
+		<div class="header" id="header">
+			<div class="label">XadreX Online</div>
+			<div class="sair" id="sair">Sair do jogo</div>
+		</div>
+		<div align="center" class="main">
+			<div class="turno" id="turno">Turno</div>
+			<div class="player2" id="player2">Jogador 2</div>
+			<img id="white" style="display: none;" src="/images/white.jpg" alt="Image error">
+			<img id="black" style="display: none;" src="/images/black.jpg" alt="Image error">
+			<img id="peaoBranco" style="display: none;" src="/images/peaoBranco.png" alt="Image error">
+			<img id="torreBranco" style="display: none;" src="/images/torreBranco.png" alt="Image error">
+			<img id="cavaloBranco" style="display: none;" src="/images/cavaloBranco.png" alt="Image error">
+			<img id="bispoBranco" style="display: none;" src="/images/bispoBranco.png" alt="Image error">
+			<img id="reiBranco" style="display: none;" src="/images/reiBranco.png" alt="Image error">
+			<img id="rainhaBranco" style="display: none;" src="/images/rainhaBranco.png"  alt="Image error">
+			<img id="peaoNegro" style="display: none;" src="/images/peaoNegro.png"  alt="Image error">
+			<img id="torreNegro" style="display: none;" src="/images/torreNegro.png" alt="Image error">
+			<img id="cavaloNegro" style="display: none;" src="/images/cavaloNegro.png" alt="Image error">
+			<img id="bispoNegro" style="display: none;" src="/images/bispoNegro.png" alt="Image error">
+			<img id="reiNegro" style="display: none;" src="/images/reiNegro.png" alt="Image error">
+			<img id="rainhaNegro" style="display: none;" src="/images/rainhaNegro.png" alt="Image error">
+			<canvas class="canvas" id="myCanvas" width="1200" height="720">
+				Your browser does not support the HTML5 canvas tag.
+			</canvas>
+			<div class="player1" id="player1">Jogador 1</div>
+		</div>
+	</body>
+
+	<script>
+		var botaoSair = O('sair');
+		var x0 = 260;
+		var y0 = 40;
+		var size = 85;
+		var imgData;
+		var x = [];
+		var y = [];
+		var canvas = O("myCanvas");
+		var ctx = canvas.getContext("2d");
+		var tabuleiro = new Array(8);
+		var cor;
+		var turno;
+		var pecaSelecionada = {x:'', y:''};
+		var matrizMovimento = new Array(8);		
+
+		for (let i = 0; i < 8; i++) {
+			tabuleiro[i] = new Array(8);
+			matrizMovimento[i] = new Array(8);
+			for (let j = 0; j < 8; j++) {
+				matrizMovimento[i][j] = false;
+			}
+			x[i] = i*size + x0;
+			y[i] = i*size + y0;
+		}
+
+		var servidorWebserver;
+		var websocket;		
+		var flagSair = false;
+
+		servidorWebserver = 'ws://' + window.location.hostname + ':8080';
+		verificaGame();
+
+		function startConnection(query) {		
+			websocket = new WebSocket(servidorWebserver);
+			websocket.onopen = function(evt) {			
+				onOpen(evt, query);
+			}
+			websocket.onclose = function(evt) {
+				onClose(evt)
+			}
+			websocket.onmessage = function(evt) {	
+				onMessage(evt);
+			}
+		}
+	
+		function onOpen(env, query) {
+			let MSG = {tipo: 'VERIFICA-GAME', valor: query};
+			websocket.send(JSON.stringify(MSG));
+		}
+
+      	function onClose(evt) {			
+			websocket.close();
+      	}
+
+      	function onMessage(evt) {
+          	var msg = evt.data
+          	msg = JSON.parse(msg);
+          	switch (msg.tipo) {
+				case 'VALIDO':
+					cor = msg.cor;
+					if (cor == 'branco') {
+						tabuleiro = msg.board;
+					} else {
+						for (let i = 0; i < 8; i++) {
+							for (let j = 0; j < 8; j++) {
+								tabuleiro[i][j] = msg.board[7-i][7-j];
+							}
+						}					
+					}
+					O('player1').innerHTML = msg.player1;
+					O('player2').innerHTML = msg.player2;
+					console.log('turno:', msg.turno);
+					atualizaTurno(msg.turno);
+					desenhaTabuleiro(white, black);					
+					loadTabuleiro();
+					break
+				case 'INVALIDO':
+					websocket.close();
+					window.location.replace("http://localhost:3000");
+					break;
+				case 'ERRO':
+                  	confirm(msg.valor);
+					websocket.close();
+                  	break;
+				case 'REDIRECIONA':
+					if (flagSair) {
+						window.location.replace("http://localhost:3000/main.html?"+msg.valor);
+					} else {
+						confirm("O oponente desistiu");
+						window.location.replace("http://localhost:3000/main.html?"+msg.valor);
+					}
+					break;
+				case 'JOGADA':					
+					tabuleiro[7-msg.destinoX][7-msg.destinoY] = tabuleiro[7-msg.origemX][7-msg.origemY];
+					tabuleiro[7-msg.origemX][7-msg.origemY] = null;									
+					loadTabuleiro();
+					inverteTurno();
+					break;
+				case 'REDIRECIONA-FIM':
+					if (flagSair) {
+						window.location.replace("http://localhost:3000/main.html?"+msg.valor);
+					} else {
+						confirm("Você perdeu.");
+						window.location.replace("http://localhost:3000/main.html?"+msg.valor);
+					}
+					break;
+          	}
+          	console.log('Recebeu msg', msg.tipo);
+      	}
+
+      	function O(msg) {
+          	return document.getElementById(msg);
+      	}
+
+		function verificaGame() {
+			var query = location.search.slice(1);
+			if (query == undefined) {
+				window.location.replace("http://localhost:3000");
+			} else {
+				startConnection(query);
+			}	
+		}
+
+		botaoSair.addEventListener('click', function() {
+			flagSair = true;
+			var query = location.search.slice(1);
+			let MSG = {tipo: 'SAIR-GAME', valor: query};
+			websocket.send(JSON.stringify(MSG));
+			//websocket.close();
+			//window.location.replace("http://localhost:3000");
+		}, false);
+
+		function atualizaTurno(msgTurno) {
+			if ((cor == 'branco' && msgTurno == 'player1') || (cor == 'negro' && msgTurno == 'player2')) {
+				turno = true;
+				O('turno').style.color = 'green';
+				O('turno').innerHTML = 'Seu Turno';
+			} else {
+				turno = false;
+				O('turno').style.color = 'red';
+				O('turno').innerHTML = 'Turno do Oponente';
+			}
+		}
+
+		function inverteTurno() {
+			if (turno == false) {
+				turno = true;
+				O('turno').style.color = 'green';
+				O('turno').innerHTML = 'Seu Turno';
+			} else {
+				turno = false;
+				O('turno').style.color = 'red';
+				O('turno').innerHTML = 'Turno do Oponente';
+			}
+		}
+
+		function desenhaTabuleiro (img1, img2) {	
+			var flag = true;
+
+			let st="ABCDEFGH";
+			let st2="12345678"
+		 	ctx.font = "25px Arial";
+		 	
+			for (let colunas=0;colunas<8;colunas++)
+		  		ctx.fillText(st.charAt(colunas),colunas*84.5+x0+35,30); 
+			for (let linhas=0;linhas<8;linhas++)
+		  		ctx.fillText(st2.charAt(linhas),230,linhas*84.5+y0+52); 
+			
+			for (let i = 0; i < 8; i ++) {
+				for (let j = 0; j < 8; j++) {
+					if (flag) { 
+						ctx.drawImage(img1, x0 + j*size, y0 + i*size);
+						flag = false;
+					} else {
+						ctx.drawImage(img2, x0 + j*size, y0 + i*size);
+						flag = true;
+					}				
+				}
+				if (flag) {
+					flag = false;
+				} else {
+					flag = true;
+				}
+			}
+			imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		}
+
+		window.onload = function() {
+			desenhaTabuleiro(white, black);
+			loadTabuleiro();
+		};
+
+		function loadTabuleiro () {		
+			ctx.putImageData(imgData, 0, 0);
+			for (let i = 0; i < 8; i++) {
+				for (let j = 0; j < 8; j++) {
+					if (tabuleiro[i][j] != undefined) {
+						ctx.drawImage(O(tabuleiro[i][j]), x[i], y[j], size, size);
+					}
+				}
+			}
+		}
+
+		function addPiece(piece, i, j) {
+			tabuleiro[i][j] = piece;
+			ctx.drawImage(piece, x[i], y[j]);
+		}
+
+		function removePiece(i, j) {
+			tabuleiro[i][j] = null;
+			ctx.putImageData(imgData, 0, 0);
+			loadTabuleiro();
+ 			
+		}
+
+		function desenhaRetangulo(x, y, cor) {
+			if (cor == 'green' || cor == 'red')
+				matrizMovimento[x][y] = true; 
+			ctx.beginPath();				
+			ctx.lineWidth='3';
+			ctx.strokeStyle=cor;
+			ctx.rect(x0 + x*size + 2, y0 + y*size + 2, size - 2, size - 2); 
+			ctx.stroke();
+		}
+
+		canvas.addEventListener("mousedown", function(e) {			
+			let x = e.pageX - (canvas.offsetLeft + 15) - x0; // pageX or layerX (only firefox)
+			let y = e.pageY - (canvas.offsetTop + 15) - y0;
+			x = parseInt(x / size);
+			y = parseInt(y / size);		
+
+			if (x >= 0 && x < 8 && y >= 0 && y < 8) {
+				if (matrizMovimento[x][y]) {
+					var query = location.search.slice(1);
+					if (tabuleiro[x][y] == 'reiBranco' || tabuleiro[x][y] == 'reiNegro') {
+						let MSG = {tipo: 'FIM', valor:query, origemX:pecaSelecionada.x, origemY:pecaSelecionada.y, destinoX:x, destinoY:y};
+						tabuleiro[x][y] = tabuleiro[pecaSelecionada.x][pecaSelecionada.y];
+						tabuleiro[pecaSelecionada.x][pecaSelecionada.y] = null;
+						loadTabuleiro();
+						flagSair = true;
+						confirm("Parabéns, você ganhou o jogo.");						
+						websocket.send(JSON.stringify(MSG));						
+					} else {
+						let MSG = {tipo: 'JOGADA', valor:query, origemX:pecaSelecionada.x, origemY:pecaSelecionada.y, destinoX:x, destinoY:y};
+						tabuleiro[x][y] = tabuleiro[pecaSelecionada.x][pecaSelecionada.y];
+						tabuleiro[pecaSelecionada.x][pecaSelecionada.y] = null;
+						loadTabuleiro();
+						websocket.send(JSON.stringify(MSG));
+					}
+					for (let i = 0; i < 8; i++) {
+						matrizMovimento[i] = new Array();
+						for (let j = 0; j < 8; j++) {
+							matrizMovimento[i][j] = false;
+						}
+					}
+					inverteTurno();
+				} else if (turno) {
+					var flag = false;
+					if (cor == 'branco' && (tabuleiro[x][y] == 'peaoBranco' || tabuleiro[x][y] == 'torreBranco' || tabuleiro[x][y] == 'cavaloBranco' || tabuleiro[x][y] == 'bispoBranco' || tabuleiro[x][y] == 'rainhaBranco' || tabuleiro[x][y] == 'reiBranco')) {
+						flag = true;
+					} else if (cor == 'negro' && (tabuleiro[x][y] == 'peaoNegro' || tabuleiro[x][y] == 'torreNegro' || tabuleiro[x][y] == 'cavaloNegro' || tabuleiro[x][y] == 'bispoNegro' || tabuleiro[x][y] == 'rainhaNegro' || tabuleiro[x][y] == 'reiNegro')) {
+						flag = true;
+					}		
+					if (flag) {
+						for (let i = 0; i < 8; i++) {
+							matrizMovimento[i] = new Array();
+							for (let j = 0; j < 8; j++) {
+								matrizMovimento[i][j] = false;
+							}
+						}
+						pecaSelecionada.x = x;
+						pecaSelecionada.y = y;
+						loadTabuleiro();
+						desenhaRetangulo(x, y, 'yellow');
+						mostraJogadas(x, y);
+					}
+				}		
+			}
+      	}, false);
+		
+		function mostraJogadas(x, y) {
+			switch (tabuleiro[x][y]) {
+				case 'peaoBranco':
+					if (y > 0) {
+						if (tabuleiro[x][y-1] == undefined) {
+							desenhaRetangulo(x,y-1, 'green');
+							if (y == 6 && tabuleiro[x][y-2] == undefined)
+								desenhaRetangulo(x,y-2, 'green');
+						}
+						if (x > 0) {
+							if (tabuleiro[x-1][y-1] != undefined) {
+								if (tabuleiro[x-1][y-1][tabuleiro[x-1][y-1].length-5] == 'N')
+									desenhaRetangulo(x-1,y-1, 'red');
+							}
+						}
+						if (x < 7) {
+							if (tabuleiro[x+1][y-1] != undefined) {
+								if (tabuleiro[x+1][y-1][tabuleiro[x+1][y-1].length-5] == 'N')
+									desenhaRetangulo(x+1,y-1, 'red');
+							}
+						}
+					}
+					break;
+				case 'peaoNegro':
+					if (y > 0) {
+						if (tabuleiro[x][y-1] == undefined) {
+							desenhaRetangulo(x,y-1, 'green');
+							if (y == 6 && tabuleiro[x][y-2] == undefined)
+								desenhaRetangulo(x,y-2, 'green');
+						}
+						if (x > 0) {
+							if (tabuleiro[x-1][y-1] != undefined) {
+								if (tabuleiro[x-1][y-1][tabuleiro[x-1][y-1].length-6] == 'B')
+									desenhaRetangulo(x-1,y-1, 'red');
+							}
+						}
+						if (x < 7) {
+							if (tabuleiro[x+1][y-1] != undefined) {
+								if (tabuleiro[x+1][y-1][tabuleiro[x+1][y-1].length-6] == 'B')
+									desenhaRetangulo(x+1,y-1, 'red');
+							}
+						}
+					}
+					break;
+				case 'torreBranco':
+					for (let i = y-1; i >= 0; i--) {
+						if (verificaPosicao(x, i, 'branco') == false)
+							break;
+					}
+					for (let i = y+1; i <= 7; i++) {
+						if (verificaPosicao(x, i, 'branco') == false)
+							break;
+					}
+					for (let i = x-1; i >= 0; i--) {
+						if (verificaPosicao(i, y, 'branco') == false)
+							break;
+					}
+					for (let i = x+1; i <= 7; i++) {
+						if (verificaPosicao(i, y, 'branco') == false)
+							break;
+					}
+					break;
+				case 'torreNegro':
+					for (let i = y-1; i >= 0; i--) {
+						if (verificaPosicao(x, i, 'negro') == false)
+							break;
+					}
+					for (let i = y+1; i <= 7; i++) {
+						if (verificaPosicao(x, i, 'negro') == false)
+							break;
+					}
+					for (let i = x-1; i >= 0; i--) {
+						if (verificaPosicao(i, y, 'negro') == false)
+							break;
+					}
+					for (let i = x+1; i <= 7; i++) {
+						if (verificaPosicao(i, y, 'negro') == false)
+							break;
+					}
+					break;
+				case 'cavaloBranco':
+					verificaPosicao(x + 2, y + 1, 'branco');
+					verificaPosicao(x + 2, y - 1, 'branco');
+					verificaPosicao(x + 1, y + 2, 'branco');
+					verificaPosicao(x + 1, y - 2, 'branco');
+					verificaPosicao(x - 2, y + 1, 'branco');
+					verificaPosicao(x - 2, y - 1, 'branco');
+					verificaPosicao(x - 1, y + 2, 'branco');
+					verificaPosicao(x - 1, y - 2, 'branco');
+					break;
+				case 'cavaloNegro':
+					verificaPosicao(x + 2, y + 1, 'negro');
+					verificaPosicao(x + 2, y - 1, 'negro');
+					verificaPosicao(x + 1, y + 2, 'negro');
+					verificaPosicao(x + 1, y - 2, 'negro');
+					verificaPosicao(x - 2, y + 1, 'negro');
+					verificaPosicao(x - 2, y - 1, 'negro');
+					verificaPosicao(x - 1, y + 2, 'negro');
+					verificaPosicao(x - 1, y - 2, 'negro');
+					break
+				case 'bispoBranco':
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y+i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y-i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y+i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y-i, 'branco') == false)
+							break;
+					}
+					break;
+				case 'bispoNegro':
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y+i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y-i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y+i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y-i, 'negro') == false)
+							break;
+					}
+					break;
+				case 'rainhaBranco':
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x, y+i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x, y-i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y+i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y-i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y+i, 'branco') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y-i, 'branco') == false)
+							break;
+					}					
+					break;
+				case 'rainhaNegro':
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x, y+i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x, y-i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y+i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x+i, y-i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y+i, 'negro') == false)
+							break;
+					}
+					for (let i = 1; i <= 7; i++) {
+						if (verificaPosicao(x-i, y-i, 'negro') == false)
+							break;
+					}		
+					break;
+				case 'reiBranco':
+					verificaPosicao(x+1, y, 'branco');
+					verificaPosicao(x+1, y+1, 'branco');
+					verificaPosicao(x, y+1, 'branco');
+					verificaPosicao(x-1, y+1, 'branco');
+					verificaPosicao(x-1, y, 'branco');
+					verificaPosicao(x-1, y-1, 'branco');
+					verificaPosicao(x, y-1, 'branco');
+					verificaPosicao(x+1, y-1, 'branco');
+					break;
+				case 'reiNegro':
+					verificaPosicao(x+1, y, 'negro');
+					verificaPosicao(x+1, y+1, 'negro');
+					verificaPosicao(x, y+1, 'negro');
+					verificaPosicao(x-1, y+1, 'negro');
+					verificaPosicao(x-1, y, 'negro');
+					verificaPosicao(x-1, y-1, 'negro');
+					verificaPosicao(x, y-1, 'negro');
+					verificaPosicao(x+1, y-1, 'negro');
+					break;
+			}
+		}
+
+		function verificaPosicao(x, y, cor) {
+			if (x >= 0 && x <= 7 && y >= 0 && y <= 7) {
+				if (cor == 'branco') {
+					if (tabuleiro[x][y] == undefined) {
+						desenhaRetangulo(x, y, 'green');
+						return (true);
+					} else if (tabuleiro[x][y][tabuleiro[x][y].length-5] == 'N') {
+						desenhaRetangulo(x, y, 'red');
+					}
+				} else {
+					if (tabuleiro[x][y] == undefined) {
+						desenhaRetangulo(x, y, 'green');
+						return (true)
+					} else if (tabuleiro[x][y][tabuleiro[x][y].length-6] == 'B') {
+						desenhaRetangulo(x, y, 'red');
+					}
+				}
+			}
+			return (false);
+		}
+
+	</script>
+</html>
